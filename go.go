@@ -26,25 +26,39 @@ is unnecessary and has been disabled. Instead, use
 
 // Find the godep GOPATH for this file tree and run the go tool.
 func runGo(cmd *Command, args []string) {
-	gopath := prepareGopath()
-	if s := os.Getenv("GOPATH"); s != "" {
-		gopath += string(os.PathListSeparator) + os.Getenv("GOPATH")
-	}
 	if len(args) > 0 && args[0] == "get" {
 		log.Printf("invalid subcommand: %q", "go get")
 		fmt.Fprintln(os.Stderr, "Use 'godep go install' instead.")
 		fmt.Fprintln(os.Stderr, "Run 'godep help go' for usage.")
 		os.Exit(2)
 	}
+
+	gopath := prepareGopath()
+	srcIndex := strings.Index(gopath, "src")
+	godepIndex := strings.Index(gopath, "Godep")
+	pkgPath := gopath[srcIndex+4 : godepIndex]
+	godepPkgPath := gopath + "/src/" + pkgPath
+	c := exec.Command("mkdir", "-p", godepPkgPath)
+	c.Run()
+	fmt.Println("mkdir done")
+
+	c = exec.Command("rsync", "-av", "--progress", "./", godepPkgPath, "--exclude", "Godeps/")
+	c.Run()
+	fmt.Println("cp done")
+
+	err := runGoWithGOPATH(gopath, args)
+	if err != nil {
+		log.Fatalln("go", err)
+	}
+}
+
+func runGoWithGOPATH(gopath string, args []string) error {
 	c := exec.Command("go", args...)
 	c.Env = append(envNoGopath(), "GOPATH="+gopath)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	err := c.Run()
-	if err != nil {
-		log.Fatalln("go", err)
-	}
+	return c.Run()
 }
 
 // prepareGopath reads dependency information from the filesystem
